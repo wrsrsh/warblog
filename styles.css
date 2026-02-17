@@ -1,0 +1,22 @@
+.warblog-modal-input {
+  width: 100%;
+  margin-top: 1rem;
+}
+
+.warblog-btn-container {
+  margin-top: 1rem;
+  display: flex;
+  gap: 0.5rem;
+  justify-content: flex-end;
+}
+
+.warblog-path-display {
+  margin-top: -0.5rem;
+  margin-bottom: 1rem;
+  font-family: var(--font-monospace);
+  font-size: 0.9em;
+}
+
+.warblog-section {
+  margin-top: 2rem;
+}

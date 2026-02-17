@@ -1,9 +1,10 @@
-import * as fs from "fs";
+import { promises as fs } from "fs";
+import { existsSync, lstatSync, readlinkSync } from "fs";
 import * as path from "path";
-import { App, Notice, Plugin, PluginSettingTab, Setting, Modal } from "obsidian";
+import { App, Notice, Plugin, PluginSettingTab, Setting, Modal, FileSystemAdapter } from "obsidian";
 import simpleGit, { SimpleGit } from "simple-git";
 import { z } from "zod";
-const matter = require("gray-matter");
+import matter from "gray-matter";
 
 const BlogSchema = z.object({
   title: z.string(),
@@ -19,6 +20,14 @@ interface Settings {
   contentFolder: string;
   symlinkName: string;
   password: string;
+}
+
+interface ElectronDialog {
+  showOpenDialog(options: { properties: string[] }): Promise<{ canceled: boolean; filePaths: string[] }>;
+}
+
+interface ElectronRemote {
+  dialog: ElectronDialog;
 }
 
 const DEFAULT_SETTINGS: Settings = {
@@ -50,7 +59,7 @@ export default class WarBlog extends Plugin {
   }
 
   async loadSettings() {
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData());
+    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData()) as Settings;
   }
 
   async saveSettings() {
@@ -58,7 +67,20 @@ export default class WarBlog extends Plugin {
   }
 
   async selectFolder(): Promise<string | null> {
-    const { dialog } = require("@electron/remote") || require("electron").remote;
+    let dialog: ElectronDialog | null = null;
+
+    try {
+      const remoteModule = await import("@electron/remote") as ElectronRemote;
+      dialog = remoteModule.dialog;
+    } catch {
+      try {
+        const electronModule = await import("electron") as { remote?: ElectronRemote };
+        dialog = electronModule.remote?.dialog ?? null;
+      } catch {
+        // Electron not available
+      }
+    }
+
     if (!dialog) {
       new Notice("File picker unavailable");
       return null;
@@ -68,21 +90,24 @@ export default class WarBlog extends Plugin {
     return result.canceled ? null : result.filePaths[0];
   }
 
-  async setupSymlink() {
-    const vaultRoot = (this.app.vault.adapter as any).basePath;
+  async setupSymlink(): Promise<void> {
+    const adapter = this.app.vault.adapter;
+    if (!(adapter instanceof FileSystemAdapter)) return;
+
+    const vaultRoot = adapter.getBasePath();
     const linkPath = path.join(vaultRoot, this.settings.symlinkName);
     const targetPath = path.join(this.settings.astroRoot, this.settings.contentFolder);
 
-    if (!fs.existsSync(targetPath)) {
+    if (!existsSync(targetPath)) {
       new Notice("Blog folder not found");
       return;
     }
 
-    if (fs.existsSync(linkPath)) {
-      const stats = fs.lstatSync(linkPath);
+    if (existsSync(linkPath)) {
+      const stats = lstatSync(linkPath);
       if (stats.isSymbolicLink()) {
-        if (fs.readlinkSync(linkPath) === targetPath) return;
-        fs.unlinkSync(linkPath);
+        if (readlinkSync(linkPath) === targetPath) return;
+        await fs.unlink(linkPath);
       } else {
         new Notice(`Folder "${this.settings.symlinkName}" already exists`);
         return;
@@ -90,7 +115,7 @@ export default class WarBlog extends Plugin {
     }
 
     try {
-      fs.symlinkSync(targetPath, linkPath, "junction");
+      await fs.symlink(targetPath, linkPath, "junction");
       new Notice("Blog linked successfully");
     } catch (err) {
       new Notice("Failed to create link");
@@ -98,12 +123,15 @@ export default class WarBlog extends Plugin {
     }
   }
 
-  async removeSymlink() {
-    const vaultRoot = (this.app.vault.adapter as any).basePath;
+  async removeSymlink(): Promise<void> {
+    const adapter = this.app.vault.adapter;
+    if (!(adapter instanceof FileSystemAdapter)) return;
+
+    const vaultRoot = adapter.getBasePath();
     const linkPath = path.join(vaultRoot, this.settings.symlinkName);
 
-    if (fs.existsSync(linkPath) && fs.lstatSync(linkPath).isSymbolicLink()) {
-      fs.unlinkSync(linkPath);
+    if (existsSync(linkPath) && lstatSync(linkPath).isSymbolicLink()) {
+      await fs.unlink(linkPath);
     }
   }
 
@@ -156,7 +184,7 @@ export default class WarBlog extends Plugin {
 
       new Notice("Blog updated successfully");
     } catch (err) {
-      new Notice(`Update failed: ${err.message}`);
+      new Notice(`Update failed: ${(err as Error).message}`);
       console.error(err);
     }
   }
@@ -176,36 +204,36 @@ class PasswordModal extends Modal {
     contentEl.empty();
     contentEl.addClass("warblog-modal");
 
-    contentEl.createEl("h2", { text: "Update Blog" });
+    new Setting(contentEl).setName("Update blog").setHeading();
 
     const input = contentEl.createEl("input", {
       type: "password",
       placeholder: "Enter password",
     });
-    input.style.width = "100%";
-    input.style.marginTop = "1rem";
+    input.addClass("warblog-modal-input");
 
     input.addEventListener("input", (e) => {
       this.password = (e.target as HTMLInputElement).value;
     });
 
     input.addEventListener("keypress", (e) => {
-      if (e.key === "Enter" && this.password) this.submit();
+      if (e.key === "Enter" && this.password) {
+        void this.submit();
+      }
     });
 
     const btnContainer = contentEl.createEl("div");
-    btnContainer.style.marginTop = "1rem";
-    btnContainer.style.display = "flex";
-    btnContainer.style.gap = "0.5rem";
-    btnContainer.style.justifyContent = "flex-end";
+    btnContainer.addClass("warblog-btn-container");
 
     const cancelBtn = btnContainer.createEl("button", { text: "Cancel" });
     cancelBtn.addEventListener("click", () => this.close());
 
     const submitBtn = btnContainer.createEl("button", { text: "Update", cls: "mod-cta" });
-    submitBtn.addEventListener("click", () => this.submit());
+    submitBtn.addEventListener("click", () => {
+      void this.submit();
+    });
 
-    setTimeout(() => input.focus(), 10);
+    window.setTimeout(() => input.focus(), 10);
   }
 
   async submit() {
@@ -240,13 +268,12 @@ class SettingsTab extends PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
 
-    containerEl.createEl("h1", { text: "WarBlog" });
     containerEl.createEl("p", { 
-      text: "Edit and publish your Astro blog from Obsidian",
+      text: "Edit and publish your Astro blog from Obsidian.",
       cls: "setting-item-description" 
     });
 
-    this.addSection(containerEl, "Configuration");
+    new Setting(containerEl).setName("Configuration").setHeading();
 
     new Setting(containerEl)
       .setName("Astro project root")
@@ -255,7 +282,7 @@ class SettingsTab extends PluginSettingTab {
         .setButtonText("Browse")
         .onClick(async () => {
           const folder = await this.plugin.selectFolder();
-          if (!folder || !fs.existsSync(folder)) return;
+          if (!folder || !existsSync(folder)) return;
 
           this.plugin.settings.astroRoot = folder;
           await this.plugin.saveSettings();
@@ -266,11 +293,9 @@ class SettingsTab extends PluginSettingTab {
       );
 
     if (this.plugin.settings.astroRoot) {
-      const pathEl = containerEl.createEl("div", { cls: "setting-item-description" });
-      pathEl.style.marginTop = "-0.5rem";
-      pathEl.style.marginBottom = "1rem";
-      pathEl.style.fontFamily = "monospace";
-      pathEl.style.fontSize = "0.9em";
+      const pathEl = containerEl.createEl("div", { 
+        cls: "setting-item-description warblog-path-display" 
+      });
       pathEl.textContent = this.plugin.settings.astroRoot;
     }
 
@@ -298,7 +323,7 @@ class SettingsTab extends PluginSettingTab {
         })
       );
 
-    this.addSection(containerEl, "Security");
+    new Setting(containerEl).setName("Security").setHeading();
 
     new Setting(containerEl)
       .setName("Update password")
@@ -313,11 +338,5 @@ class SettingsTab extends PluginSettingTab {
           });
         text.inputEl.type = "password";
       });
-  }
-
-  addSection(containerEl: HTMLElement, title: string) {
-    const section = containerEl.createEl("div");
-    section.style.marginTop = "2rem";
-    section.createEl("h3", { text: title });
   }
 }

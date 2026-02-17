@@ -5,12 +5,17 @@
   "private": true,
   "scripts": {
     "build": "node build.mjs production",
-    "dev": "node build.mjs"
+    "dev": "node build.mjs",
+    "lint": "eslint main.ts"
   },
   "devDependencies": {
     "@types/bun": "latest",
     "@types/electron": "^1.6.12",
-    "esbuild": "^0.27.3"
+    "@typescript-eslint/eslint-plugin": "^8.56.0",
+    "@typescript-eslint/parser": "^8.56.0",
+    "esbuild": "^0.27.3",
+    "eslint": "^9.39.2",
+    "eslint-plugin-obsidianmd": "^0.1.9"
   },
   "peerDependencies": {
     "typescript": "^5"
