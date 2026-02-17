@@ -1,0 +1,24 @@
+{
+  "name": "warblog",
+  "module": "index.ts",
+  "type": "module",
+  "private": true,
+  "scripts": {
+    "build": "node build.mjs production",
+    "dev": "node build.mjs"
+  },
+  "devDependencies": {
+    "@types/bun": "latest",
+    "@types/electron": "^1.6.12",
+    "esbuild": "^0.27.3"
+  },
+  "peerDependencies": {
+    "typescript": "^5"
+  },
+  "dependencies": {
+    "gray-matter": "^4.0.3",
+    "obsidian": "^1.12.0",
+    "simple-git": "^3.31.1",
+    "zod": "^4.3.6"
+  }
+}

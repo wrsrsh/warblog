@@ -1,0 +1,10 @@
+{
+  "id": "warblog",
+  "name": "WarBlog",
+  "version": "0.0.1",
+  "minAppVersion": "1.4.0",
+  "description": "A simple plugin to manage your Astro blog content files.",
+  "author": "Waris Reshi",
+  "authorUrl": "https://reshi.me",
+  "isDesktopOnly": true
+}
