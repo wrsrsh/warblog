@@ -1,7 +1,15 @@
 import { promises as fs } from "fs";
 import { existsSync, lstatSync, readlinkSync } from "fs";
 import * as path from "path";
-import { App, Notice, Plugin, PluginSettingTab, Setting, Modal, FileSystemAdapter } from "obsidian";
+import {
+  App,
+  Notice,
+  Plugin,
+  PluginSettingTab,
+  Setting,
+  Modal,
+  FileSystemAdapter,
+} from "obsidian";
 import simpleGit, { SimpleGit } from "simple-git";
 import { z } from "zod";
 import matter from "gray-matter";
@@ -23,7 +31,9 @@ interface Settings {
 }
 
 interface ElectronDialog {
-  showOpenDialog(options: { properties: string[] }): Promise<{ canceled: boolean; filePaths: string[] }>;
+  showOpenDialog(options: {
+    properties: string[];
+  }): Promise<{ canceled: boolean; filePaths: string[] }>;
 }
 
 interface ElectronRemote {
@@ -59,7 +69,11 @@ export default class WarBlog extends Plugin {
   }
 
   async loadSettings() {
-    this.settings = Object.assign({}, DEFAULT_SETTINGS, await this.loadData()) as Settings;
+    this.settings = Object.assign(
+      {},
+      DEFAULT_SETTINGS,
+      await this.loadData(),
+    ) as Settings;
   }
 
   async saveSettings() {
@@ -70,14 +84,16 @@ export default class WarBlog extends Plugin {
     let dialog: ElectronDialog | null = null;
 
     try {
-      const remoteModule = await import("@electron/remote") as ElectronRemote;
+      const remoteModule = (await import("@electron/remote")) as ElectronRemote;
       dialog = remoteModule.dialog;
     } catch {
       try {
-        const electronModule = await import("electron") as { remote?: ElectronRemote };
+        const electronModule = (await import("electron")) as {
+          remote?: ElectronRemote;
+        };
         dialog = electronModule.remote?.dialog ?? null;
-      } catch {
-        // Electron not available
+      } catch (error: unknown) {
+        console.error("Electron is totally unavailable", error);
       }
     }
 
@@ -86,7 +102,9 @@ export default class WarBlog extends Plugin {
       return null;
     }
 
-    const result = await dialog.showOpenDialog({ properties: ["openDirectory"] });
+    const result = await dialog.showOpenDialog({
+      properties: ["openDirectory"],
+    });
     return result.canceled ? null : result.filePaths[0];
   }
 
@@ -96,7 +114,10 @@ export default class WarBlog extends Plugin {
 
     const vaultRoot = adapter.getBasePath();
     const linkPath = path.join(vaultRoot, this.settings.symlinkName);
-    const targetPath = path.join(this.settings.astroRoot, this.settings.contentFolder);
+    const targetPath = path.join(
+      this.settings.astroRoot,
+      this.settings.contentFolder,
+    );
 
     if (!existsSync(targetPath)) {
       new Notice("Blog folder not found");
@@ -143,7 +164,9 @@ export default class WarBlog extends Plugin {
       return true;
     } catch (err) {
       if (err instanceof z.ZodError) {
-        const errors = err.issues.map(i => `${i.path.join('.')}: ${i.message}`).join('\n');
+        const errors = err.issues
+          .map((i) => `${i.path.join(".")}: ${i.message}`)
+          .join("\n");
         new Notice(`Validation failed:\n${errors}`, 8000);
       }
       return false;
@@ -159,8 +182,9 @@ export default class WarBlog extends Plugin {
     try {
       new Notice("Updating blog...");
 
-      const files = this.app.vault.getMarkdownFiles()
-        .filter(f => f.path.startsWith(this.settings.symlinkName));
+      const files = this.app.vault
+        .getMarkdownFiles()
+        .filter((f) => f.path.startsWith(this.settings.symlinkName));
 
       for (const file of files) {
         const valid = await this.validateFrontmatter(file.path);
@@ -173,13 +197,19 @@ export default class WarBlog extends Plugin {
       await this.git.add(`${this.settings.contentFolder}/*`);
       const status = await this.git.status();
 
-      if (!status.modified.length && !status.created.length && !status.deleted.length) {
+      if (
+        !status.modified.length &&
+        !status.created.length &&
+        !status.deleted.length
+      ) {
         new Notice("No changes to commit");
         return;
       }
 
       const timestamp = new Date().toLocaleString();
-      await this.git.commit(`Update blog - ${timestamp}`, undefined, { '--no-gpg-sign': null });
+      await this.git.commit(`Update blog - ${timestamp}`, undefined, {
+        "--no-gpg-sign": null,
+      });
       await this.git.push();
 
       new Notice("Blog updated successfully");
@@ -228,7 +258,10 @@ class PasswordModal extends Modal {
     const cancelBtn = btnContainer.createEl("button", { text: "Cancel" });
     cancelBtn.addEventListener("click", () => this.close());
 
-    const submitBtn = btnContainer.createEl("button", { text: "Update", cls: "mod-cta" });
+    const submitBtn = btnContainer.createEl("button", {
+      text: "Update",
+      cls: "mod-cta",
+    });
     submitBtn.addEventListener("click", () => {
       void this.submit();
     });
@@ -268,9 +301,9 @@ class SettingsTab extends PluginSettingTab {
     const { containerEl } = this;
     containerEl.empty();
 
-    containerEl.createEl("p", { 
+    containerEl.createEl("p", {
       text: "Edit and publish your Astro blog from Obsidian.",
-      cls: "setting-item-description" 
+      cls: "setting-item-description",
     });
 
     new Setting(containerEl).setName("Configuration").setHeading();
@@ -278,9 +311,8 @@ class SettingsTab extends PluginSettingTab {
     new Setting(containerEl)
       .setName("Astro project root")
       .setDesc("The root directory of your Astro blog")
-      .addButton(btn => btn
-        .setButtonText("Browse")
-        .onClick(async () => {
+      .addButton((btn) =>
+        btn.setButtonText("Browse").onClick(async () => {
           const folder = await this.plugin.selectFolder();
           if (!folder || !existsSync(folder)) return;
 
@@ -289,12 +321,12 @@ class SettingsTab extends PluginSettingTab {
           await this.plugin.removeSymlink();
           await this.plugin.setupSymlink();
           this.display();
-        })
+        }),
       );
 
     if (this.plugin.settings.astroRoot) {
-      const pathEl = containerEl.createEl("div", { 
-        cls: "setting-item-description warblog-path-display" 
+      const pathEl = containerEl.createEl("div", {
+        cls: "setting-item-description warblog-path-display",
       });
       pathEl.textContent = this.plugin.settings.astroRoot;
     }
@@ -302,25 +334,27 @@ class SettingsTab extends PluginSettingTab {
     new Setting(containerEl)
       .setName("Content folder")
       .setDesc("Path to blog posts within your Astro project")
-      .addText(text => text
-        .setPlaceholder("src/content/blog")
-        .setValue(this.plugin.settings.contentFolder)
-        .onChange(async value => {
-          this.plugin.settings.contentFolder = value.trim();
-          await this.plugin.saveSettings();
-        })
+      .addText((text) =>
+        text
+          .setPlaceholder("src/content/blog")
+          .setValue(this.plugin.settings.contentFolder)
+          .onChange(async (value) => {
+            this.plugin.settings.contentFolder = value.trim();
+            await this.plugin.saveSettings();
+          }),
       );
 
     new Setting(containerEl)
       .setName("Vault folder name")
       .setDesc("Name of the linked folder in your vault")
-      .addText(text => text
-        .setPlaceholder("Blog")
-        .setValue(this.plugin.settings.symlinkName)
-        .onChange(async value => {
-          this.plugin.settings.symlinkName = value.trim();
-          await this.plugin.saveSettings();
-        })
+      .addText((text) =>
+        text
+          .setPlaceholder("Blog")
+          .setValue(this.plugin.settings.symlinkName)
+          .onChange(async (value) => {
+            this.plugin.settings.symlinkName = value.trim();
+            await this.plugin.saveSettings();
+          }),
       );
 
     new Setting(containerEl).setName("Security").setHeading();
@@ -328,11 +362,11 @@ class SettingsTab extends PluginSettingTab {
     new Setting(containerEl)
       .setName("Update password")
       .setDesc("Required to publish changes")
-      .addText(text => {
+      .addText((text) => {
         text
           .setPlaceholder("Set password")
           .setValue(this.plugin.settings.password)
-          .onChange(async value => {
+          .onChange(async (value) => {
             this.plugin.settings.password = value;
             await this.plugin.saveSettings();
           });
